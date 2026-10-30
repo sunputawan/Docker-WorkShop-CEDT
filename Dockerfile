@@ -13,6 +13,10 @@ WORKDIR /app
 # TODO(step-4b): copy package.json and package-lock.json, then install deps.
 COPY app/package.json app/package-lock.json ./
 RUN npm ci --omit=dev
+# Trivy flags proxy-addr 2.0.7 (CVE-2026-90711) as CRITICAL. express allows
+# ~2.0.7, so bumping it here stays inside the lockfile's declared range and
+# leaves app/package-lock.json untouched.
+RUN npm update proxy-addr --omit=dev
 
 # TODO(step-4c): copy the rest of the app source into /app.
 COPY app/ ./
@@ -23,6 +27,18 @@ COPY app/ ./
 
 # TODO(step-4d): set the runtime base image (same tag as step-4a for consistency).
 FROM node:20.11-slim
+
+# The pinned base ships debian 12.5 packages with known CRITICAL CVEs
+# (libgnutls30, perl-base). Patch them without moving off the pinned tag.
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
+
+# The runtime only ever runs `node`, and npm bundles its own tar 6.2.0
+# (CVE-2026-59873). Dropping npm and yarn removes it from the final image.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm /usr/local/bin/npx \
+           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 WORKDIR /app
 
